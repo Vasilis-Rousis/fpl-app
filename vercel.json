@@ -1,0 +1,28 @@
+{
+  "crons": [
+    {
+      "path": "/api/sync/bootstrap",
+      "schedule": "0 */6 * * *"
+    },
+    {
+      "path": "/api/sync/fixtures",
+      "schedule": "0 */6 * * *"
+    },
+    {
+      "path": "/api/sync/live",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/sync/players",
+      "schedule": "0 4 * * *"
+    },
+    {
+      "path": "/api/sync/manager",
+      "schedule": "*/30 * * * *"
+    },
+    {
+      "path": "/api/sync/h2h",
+      "schedule": "*/30 * * * *"
+    }
+  ]
+}
