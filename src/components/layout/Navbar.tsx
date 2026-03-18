@@ -14,12 +14,13 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import SyncManager from "@/components/SyncManager";
 
 const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/players", label: "Players", icon: Users },
-  { href: "/recommendations", label: "Picks", icon: Trophy },
-  { href: "/recommendations/transfers", label: "Transfers", icon: ArrowLeftRight },
+  { href: "/recommendations", label: "Picks", icon: Trophy, exact: true },
+  { href: "/recommendations/transfers", label: "Transfers", icon: ArrowLeftRight, exact: true },
   { href: "/h2h", label: "H2H", icon: Swords },
   { href: "/fixtures", label: "Fixtures", icon: Calendar },
 ];
@@ -46,8 +47,9 @@ export default function Navbar() {
           <div className="hidden md:flex md:items-center md:gap-1">
             {navItems.map((item) => {
               const isActive =
-                pathname === item.href ||
-                (item.href !== "/" && pathname.startsWith(item.href));
+                item.exact || item.href === "/"
+                  ? pathname === item.href
+                  : pathname.startsWith(item.href);
               const Icon = item.icon;
 
               return (
@@ -67,13 +69,17 @@ export default function Navbar() {
             })}
           </div>
 
-          {/* Mobile menu button */}
-          <button
-            className="md:hidden rounded-lg p-2 text-fpl-muted hover:bg-white/5 hover:text-white"
-            onClick={() => setMobileOpen(!mobileOpen)}
-          >
-            {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-          </button>
+          <div className="flex items-center gap-1">
+            <SyncManager />
+
+            {/* Mobile menu button */}
+            <button
+              className="md:hidden rounded-lg p-2 text-fpl-muted hover:bg-white/5 hover:text-white"
+              onClick={() => setMobileOpen(!mobileOpen)}
+            >
+              {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+            </button>
+          </div>
         </div>
       </div>
 

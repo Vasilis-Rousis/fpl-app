@@ -33,32 +33,40 @@ export default async function TransfersPage() {
   const supabase = createServerClient();
   const managerId = parseInt(FPL_MANAGER_ID);
 
-  const { data: currentGW } = await supabase
+  // Use next gameweek for forward-looking transfers
+  const { data: nextGW } = await supabase
     .from("gameweeks")
     .select("id, name")
+    .eq("is_next", true)
+    .single();
+
+  // Also get current GW for squad picks
+  const { data: currentGW } = await supabase
+    .from("gameweeks")
+    .select("id")
     .eq("is_current", true)
     .single();
 
-  if (!currentGW) {
+  if (!nextGW) {
     return (
       <div className="space-y-6">
         <Header />
-        <EmptyState message="No current gameweek found. Sync data first." />
+        <EmptyState message="No upcoming gameweek found. Sync data first." />
       </div>
     );
   }
 
-  // Get current squad
+  // Get current squad (picks are from the current/latest GW)
   const { data: picks } = await supabase
     .from("manager_picks")
     .select("element, position, is_captain")
     .eq("manager_id", managerId)
-    .eq("event", currentGW.id);
+    .eq("event", currentGW?.id ?? nextGW.id - 1);
 
   if (!picks || picks.length === 0) {
     return (
       <div className="space-y-6">
-        <Header gwName={currentGW.name} />
+        <Header gwName={nextGW.name} />
         <EmptyState message="No squad data found. Sync manager data first." />
       </div>
     );
@@ -76,13 +84,13 @@ export default async function TransfersPage() {
     .select(
       "element, composite_score, players:element(id, web_name, element_type, now_cost, team, status)"
     )
-    .eq("gameweek", currentGW.id)
+    .eq("gameweek", nextGW.id)
     .order("composite_score", { ascending: false });
 
   if (!allScored) {
     return (
       <div className="space-y-6">
-        <Header gwName={currentGW.name} />
+        <Header gwName={nextGW.name} />
         <EmptyState message="No scores computed. Run the scoring algorithm first." />
       </div>
     );
@@ -93,7 +101,8 @@ export default async function TransfersPage() {
     .from("manager_history")
     .select("bank, value")
     .eq("manager_id", managerId)
-    .eq("event", currentGW.id)
+    .order("event", { ascending: false })
+    .limit(1)
     .single();
 
   const bank = managerHistory?.bank ?? 0;
@@ -142,7 +151,7 @@ export default async function TransfersPage() {
       };
 
       const scoreDelta = best.composite_score - current.composite_score;
-      if (scoreDelta > 5) {
+      if (scoreDelta > 1.5) {
         suggestions.push({
           sellPlayer: {
             ...currentPlayer,
@@ -168,13 +177,13 @@ export default async function TransfersPage() {
   const { data: upcomingFixtures } = await supabase
     .from("fixtures")
     .select("event, team_h, team_a, team_h_difficulty, team_a_difficulty")
-    .gt("event", currentGW.id)
-    .lte("event", currentGW.id + 3)
+    .gte("event", nextGW.id)
+    .lte("event", nextGW.id + 3)
     .eq("finished", false);
 
   return (
     <div className="space-y-8">
-      <Header gwName={currentGW.name} />
+      <Header gwName={nextGW.name} />
 
       {/* Budget Info */}
       <div className="rounded-xl border border-fpl-border bg-fpl-card p-4">

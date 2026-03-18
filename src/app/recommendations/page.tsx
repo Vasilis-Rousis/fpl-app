@@ -9,13 +9,14 @@ export const dynamic = "force-dynamic";
 export default async function RecommendationsPage() {
   const supabase = createServerClient();
 
-  const { data: currentGW } = await supabase
+  // Use next gameweek for forward-looking recommendations
+  const { data: nextGW } = await supabase
     .from("gameweeks")
     .select("id, name")
-    .eq("is_current", true)
+    .eq("is_next", true)
     .single();
 
-  if (!currentGW) {
+  if (!nextGW) {
     return (
       <div className="space-y-6">
         <Header />
@@ -30,7 +31,7 @@ export default async function RecommendationsPage() {
     .select(
       "element, composite_score, form_score, fixture_score, captain_score, players:element(id, web_name, team, element_type, now_cost, total_points, form, selected_by_percent, teams:team(short_name))"
     )
-    .eq("gameweek", currentGW.id)
+    .eq("gameweek", nextGW.id)
     .order("composite_score", { ascending: false })
     .limit(50);
 
@@ -40,13 +41,13 @@ export default async function RecommendationsPage() {
     .select(
       "element, captain_score, composite_score, players:element(id, web_name, team, element_type, now_cost, teams:team(short_name))"
     )
-    .eq("gameweek", currentGW.id)
+    .eq("gameweek", nextGW.id)
     .order("captain_score", { ascending: false })
     .limit(5);
 
   return (
     <div className="space-y-8">
-      <Header gwName={currentGW.name} />
+      <Header gwName={nextGW.name} />
 
       {/* Captain Picks */}
       <section>

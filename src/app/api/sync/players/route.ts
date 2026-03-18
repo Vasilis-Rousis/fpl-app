@@ -8,7 +8,8 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const result = await syncPlayerHistory();
+    const force = request.nextUrl.searchParams.get("force") === "true";
+    const result = await syncPlayerHistory(force);
     return NextResponse.json({ success: true, ...result });
   } catch (error) {
     console.error("Player history sync failed:", error);

@@ -6,6 +6,7 @@ import { syncLiveGameweek } from "@/lib/sync/live";
 import { syncPlayerHistory } from "@/lib/sync/player-history";
 import { syncManager, syncManagerPicks } from "@/lib/sync/manager";
 import { syncH2H } from "@/lib/sync/h2h";
+import { computeAllScores, storeScores } from "@/lib/scoring/algorithm";
 import { FPL_MANAGER_ID, H2H_LEAGUE_ID } from "@/lib/fpl/constants";
 
 const SYNC_COOLDOWN_MS = 10 * 60 * 1000; // 10 minutes
@@ -80,7 +81,7 @@ export async function GET() {
     }
   });
 
-  // Live gameweek — needs current GW from bootstrap
+  // Live gameweek + scores — needs GW data from bootstrap
   try {
     const { data: currentGW } = await supabase
       .from("gameweeks")
@@ -88,17 +89,82 @@ export async function GET() {
       .eq("is_current", true)
       .single();
 
+    const { data: nextGW } = await supabase
+      .from("gameweeks")
+      .select("id")
+      .eq("is_next", true)
+      .single();
+
+    // Determine the latest completed GW for picks
+    const latestPlayedGW = currentGW?.id ?? (nextGW ? nextGW.id - 1 : null);
+
     if (currentGW) {
       results.live = await syncLiveGameweek(currentGW.id);
+    }
 
-      // Also sync manager picks for current GW
+    // Sync manager picks for the latest played GW
+    if (latestPlayedGW) {
       try {
         results.picks = await syncManagerPicks(
           parseInt(FPL_MANAGER_ID),
-          currentGW.id
+          latestPlayedGW
         );
       } catch {
         // Picks may not be available yet
+      }
+
+      // Sync H2H opponent's picks and transfers
+      try {
+        const managerId = parseInt(FPL_MANAGER_ID);
+        const leagueId = parseInt(H2H_LEAGUE_ID);
+        const targetGW = nextGW?.id ?? currentGW?.id;
+
+        if (targetGW) {
+          const { data: h2hMatches } = await supabase
+            .from("h2h_matches")
+            .select("entry_1_entry, entry_2_entry")
+            .eq("league_id", leagueId)
+            .eq("event", targetGW);
+
+          const match = h2hMatches?.find(
+            (m) =>
+              m.entry_1_entry === managerId || m.entry_2_entry === managerId
+          );
+
+          if (match) {
+            const opponentId =
+              match.entry_1_entry === managerId
+                ? match.entry_2_entry
+                : match.entry_1_entry;
+
+            const [oppPicks, oppManager] = await Promise.allSettled([
+              syncManagerPicks(opponentId, latestPlayedGW),
+              syncManager(opponentId),
+            ]);
+
+            results.opponentPicks =
+              oppPicks.status === "fulfilled" ? oppPicks.value : "failed";
+            results.opponentManager =
+              oppManager.status === "fulfilled" ? oppManager.value : "failed";
+          }
+        }
+      } catch (e) {
+        errors.push(
+          `opponent sync: ${e instanceof Error ? e.message : String(e)}`
+        );
+      }
+    }
+
+    // Compute scores: algorithm uses currentGW context (looks at GW+1 fixtures)
+    // Store under nextGW so display pages can query by is_next
+    if (currentGW) {
+      const storeUnderGW = nextGW?.id ?? currentGW.id;
+      try {
+        const scores = await computeAllScores(currentGW.id);
+        const stored = await storeScores(scores, storeUnderGW);
+        results.scores = { gameweek: storeUnderGW, playersScored: stored };
+      } catch (e) {
+        errors.push(`scores: ${e instanceof Error ? e.message : String(e)}`);
       }
     }
   } catch (e) {

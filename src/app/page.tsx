@@ -7,10 +7,88 @@ import {
   ArrowRight,
 } from "lucide-react";
 import Link from "next/link";
+import { createServerClient, isSupabaseConfigured } from "@/lib/supabase/server";
+import { FPL_MANAGER_ID, H2H_LEAGUE_ID } from "@/lib/fpl/constants";
 
-export const revalidate = 300; // ISR: revalidate every 5 minutes
+export const dynamic = "force-dynamic";
 
-export default function Dashboard() {
+export default async function Dashboard() {
+  let gwLabel = "--";
+  let gwDeadline = "Deadline TBD";
+  let overallRank = "--";
+  let totalPoints = "--";
+  let h2hRecord = "--";
+  let h2hSubtext = "W-D-L";
+
+  if (isSupabaseConfigured()) {
+    const supabase = createServerClient();
+    const managerId = parseInt(FPL_MANAGER_ID);
+    const leagueId = parseInt(H2H_LEAGUE_ID);
+
+    // Current gameweek
+    const { data: currentGW } = await supabase
+      .from("gameweeks")
+      .select("id, name, deadline_time")
+      .eq("is_current", true)
+      .single();
+
+    if (currentGW) {
+      gwLabel = `GW${currentGW.id}`;
+      if (currentGW.deadline_time) {
+        gwDeadline = new Date(currentGW.deadline_time).toLocaleDateString("en-GB", {
+          day: "numeric",
+          month: "short",
+          hour: "2-digit",
+          minute: "2-digit",
+        });
+      }
+    }
+
+    // Manager history — latest event
+    const { data: latestHistory } = await supabase
+      .from("manager_history")
+      .select("total_points, overall_rank")
+      .eq("manager_id", managerId)
+      .order("event", { ascending: false })
+      .limit(1)
+      .single();
+
+    if (latestHistory) {
+      totalPoints = latestHistory.total_points?.toLocaleString() ?? "--";
+      overallRank = latestHistory.overall_rank?.toLocaleString() ?? "--";
+    }
+
+    // H2H record
+    const { data: matches } = await supabase
+      .from("h2h_matches")
+      .select("entry_1_entry, entry_2_entry, entry_1_points, entry_2_points")
+      .eq("league_id", leagueId);
+
+    if (matches && matches.length > 0) {
+      let wins = 0;
+      let draws = 0;
+      let losses = 0;
+
+      for (const m of matches) {
+        const isEntry1 = m.entry_1_entry === managerId;
+        const isEntry2 = m.entry_2_entry === managerId;
+        if (!isEntry1 && !isEntry2) continue;
+
+        const myPts = isEntry1 ? m.entry_1_points : m.entry_2_points;
+        const oppPts = isEntry1 ? m.entry_2_points : m.entry_1_points;
+
+        if (myPts == null || oppPts == null) continue;
+
+        if (myPts > oppPts) wins++;
+        else if (myPts < oppPts) losses++;
+        else draws++;
+      }
+
+      h2hRecord = `${wins}-${draws}-${losses}`;
+      h2hSubtext = "W-D-L";
+    }
+  }
+
   return (
     <div className="space-y-8">
       {/* Header */}
@@ -27,26 +105,26 @@ export default function Dashboard() {
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <QuickStatCard
           label="Current GW"
-          value="--"
-          subtext="Deadline TBD"
+          value={gwLabel}
+          subtext={gwDeadline}
           icon={Calendar}
         />
         <QuickStatCard
           label="Overall Rank"
-          value="--"
-          subtext="Syncing..."
+          value={overallRank}
+          subtext="Season 24/25"
           icon={TrendingUp}
         />
         <QuickStatCard
           label="Total Points"
-          value="--"
+          value={totalPoints}
           subtext="Season 24/25"
           icon={Trophy}
         />
         <QuickStatCard
           label="H2H Record"
-          value="--"
-          subtext="W-D-L"
+          value={h2hRecord}
+          subtext={h2hSubtext}
           icon={Swords}
         />
       </div>
@@ -88,34 +166,6 @@ export default function Dashboard() {
           icon={Calendar}
           color="bg-yellow-500/10 text-yellow-400"
         />
-      </div>
-
-      {/* Setup Notice */}
-      <div className="rounded-xl border border-fpl-border bg-fpl-card p-6">
-        <h2 className="text-lg font-semibold text-white">Getting Started</h2>
-        <p className="mt-2 text-sm text-fpl-muted">
-          To populate your dashboard with live data, you need to:
-        </p>
-        <ol className="mt-3 list-inside list-decimal space-y-2 text-sm text-fpl-muted">
-          <li>
-            Create a Supabase project and run the SQL schema from{" "}
-            <code className="rounded bg-fpl-border px-1.5 py-0.5 text-xs text-fpl-green">
-              supabase/schema.sql
-            </code>
-          </li>
-          <li>
-            Add your Supabase URL and keys to{" "}
-            <code className="rounded bg-fpl-border px-1.5 py-0.5 text-xs text-fpl-green">
-              .env.local
-            </code>
-          </li>
-          <li>
-            Trigger the initial data sync by visiting{" "}
-            <code className="rounded bg-fpl-border px-1.5 py-0.5 text-xs text-fpl-green">
-              /api/sync/bootstrap
-            </code>
-          </li>
-        </ol>
       </div>
     </div>
   );

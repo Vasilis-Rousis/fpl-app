@@ -13,17 +13,17 @@ import type {
   H2HStandingsResponse,
 } from "./types";
 
-// Simple rate limiter: 1 request per second
-let lastRequestTime = 0;
-const MIN_INTERVAL_MS = 1000;
+// Queue-based rate limiter: ensures min 200ms between requests (safe for concurrency)
+const MIN_INTERVAL_MS = 200;
+let queue: Promise<void> = Promise.resolve();
 
 async function rateLimitedFetch(url: string): Promise<Response> {
-  const now = Date.now();
-  const elapsed = now - lastRequestTime;
-  if (elapsed < MIN_INTERVAL_MS) {
-    await new Promise((resolve) => setTimeout(resolve, MIN_INTERVAL_MS - elapsed));
-  }
-  lastRequestTime = Date.now();
+  // Chain onto the queue so concurrent calls are serialized with spacing
+  const ticket = queue.then(
+    () => new Promise<void>((r) => setTimeout(r, MIN_INTERVAL_MS))
+  );
+  queue = ticket;
+  await ticket;
 
   const response = await fetch(url, {
     headers: {

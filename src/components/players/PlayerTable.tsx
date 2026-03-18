@@ -23,6 +23,7 @@ interface PlayerRow {
   selected_by_percent: string;
   composite_score: number | null;
   status: string;
+  has_blank?: boolean;
 }
 
 interface PlayerTableProps {
@@ -61,6 +62,11 @@ export default function PlayerTable({ players, teams }: PlayerTableProps) {
           <span className="ml-2 text-xs text-fpl-muted">
             {p.team_short_name}
           </span>
+          {p.has_blank && (
+            <span className="ml-1.5 rounded bg-yellow-400/20 px-1.5 py-0.5 text-[10px] font-bold text-yellow-400">
+              BLANK
+            </span>
+          )}
         </Link>
       ),
       getValue: (p) => p.web_name,

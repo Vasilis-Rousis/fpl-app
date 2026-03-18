@@ -11,29 +11,36 @@ export default async function MatchupPage() {
   const managerId = parseInt(FPL_MANAGER_ID);
   const leagueId = parseInt(H2H_LEAGUE_ID);
 
-  const { data: currentGW } = await supabase
+  // Use next gameweek for upcoming matchup
+  const { data: nextGW } = await supabase
     .from("gameweeks")
     .select("id, name")
+    .eq("is_next", true)
+    .single();
+
+  const { data: currentGW } = await supabase
+    .from("gameweeks")
+    .select("id")
     .eq("is_current", true)
     .single();
 
-  if (!currentGW) {
-    return <EmptyPage message="No current gameweek found." />;
+  if (!nextGW) {
+    return <EmptyPage message="No upcoming gameweek found." />;
   }
 
-  // Find opponent
+  // Find next GW opponent
   const { data: matches } = await supabase
     .from("h2h_matches")
     .select("*")
     .eq("league_id", leagueId)
-    .eq("event", currentGW.id);
+    .eq("event", nextGW.id);
 
   const match = matches?.find(
     (m) => m.entry_1_entry === managerId || m.entry_2_entry === managerId
   );
 
   if (!match) {
-    return <EmptyPage message="No H2H match found for this gameweek." />;
+    return <EmptyPage message="No H2H match found for the upcoming gameweek." />;
   }
 
   const isEntry1 = match.entry_1_entry === managerId;
@@ -43,18 +50,19 @@ export default async function MatchupPage() {
     : match.entry_1_player_name;
   const opponentTeamName = isEntry1 ? match.entry_2_name : match.entry_1_name;
 
-  // Fetch both squads
+  // Fetch both squads — your current picks, opponent's latest known picks
+  const latestGW = currentGW?.id ?? nextGW.id - 1;
   const [{ data: myPicks }, { data: oppPicks }] = await Promise.all([
     supabase
       .from("manager_picks")
       .select("element, position, multiplier, is_captain, is_vice_captain")
       .eq("manager_id", managerId)
-      .eq("event", currentGW.id),
+      .eq("event", latestGW),
     supabase
       .from("manager_picks")
       .select("element, position, multiplier, is_captain, is_vice_captain")
       .eq("manager_id", opponentId)
-      .eq("event", currentGW.id),
+      .eq("event", latestGW),
   ]);
 
   // Fetch player details
@@ -203,7 +211,7 @@ export default async function MatchupPage() {
         </div>
         <div>
           <h1 className="text-2xl font-bold">
-            {currentGW.name} Matchup
+            {nextGW.name} Matchup
           </h1>
           <p className="text-sm text-fpl-muted">
             vs {opponentName} ({opponentTeamName})

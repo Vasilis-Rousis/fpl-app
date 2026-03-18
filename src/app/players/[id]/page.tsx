@@ -4,7 +4,7 @@ import { formatPrice, getPositionFull, getStatus, formatNumber } from "@/lib/uti
 import PlayerFormChart from "@/components/players/PlayerFormChart";
 import ScoreBadge from "@/components/ui/ScoreBadge";
 import { DifficultyBadge } from "@/components/ui/ScoreBadge";
-import { ArrowLeft, TrendingUp, Target, Shield, Clock } from "lucide-react";
+import { ArrowLeft, TrendingUp, Target, Shield, Clock, AlertTriangle } from "lucide-react";
 import Link from "next/link";
 
 export const dynamic = "force-dynamic";
@@ -51,6 +51,13 @@ export default async function PlayerDetailPage({
     score = scoreData;
   }
 
+  // Fetch next GW
+  const { data: nextGW } = await supabase
+    .from("gameweeks")
+    .select("id")
+    .eq("is_next", true)
+    .single();
+
   // Fetch upcoming fixtures
   const { data: upcomingFixtures } = await supabase
     .from("fixtures")
@@ -59,6 +66,12 @@ export default async function PlayerDetailPage({
     .eq("finished", false)
     .order("event", { ascending: true })
     .limit(5);
+
+  // Check if player's team has a blank in the next GW
+  const hasBlankNextGW =
+    nextGW &&
+    upcomingFixtures &&
+    !upcomingFixtures.some((f) => f.event === nextGW.id);
 
   const statusInfo = getStatus(player.status);
   const teamInfo = player.teams as unknown as { name: string; short_name: string };
@@ -101,6 +114,12 @@ export default async function PlayerDetailPage({
               <div className="mt-1">
                 <ScoreBadge score={score.composite_score} size="lg" />
               </div>
+              {hasBlankNextGW && (
+                <div className="mt-2 flex items-center justify-end gap-1 text-yellow-400">
+                  <AlertTriangle className="h-3.5 w-3.5" />
+                  <span className="text-xs font-medium">Blank GW{nextGW.id}</span>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -147,8 +166,20 @@ export default async function PlayerDetailPage({
         {/* Upcoming Fixtures */}
         <div className="rounded-xl border border-fpl-border bg-fpl-card p-6">
           <h2 className="mb-4 text-lg font-semibold">Upcoming Fixtures</h2>
-          {upcomingFixtures && upcomingFixtures.length > 0 ? (
+          {upcomingFixtures && (upcomingFixtures.length > 0 || hasBlankNextGW) ? (
             <div className="space-y-2">
+              {hasBlankNextGW && (
+                <div className="flex items-center justify-between rounded-lg bg-yellow-400/10 border border-yellow-400/20 px-4 py-2.5">
+                  <span className="text-sm text-fpl-muted">GW{nextGW.id}</span>
+                  <span className="flex items-center gap-1.5 text-sm font-medium text-yellow-400">
+                    <AlertTriangle className="h-3.5 w-3.5" />
+                    No fixture
+                  </span>
+                  <span className="rounded bg-yellow-400/20 px-2 py-0.5 text-xs font-medium text-yellow-400">
+                    BLANK
+                  </span>
+                </div>
+              )}
               {upcomingFixtures.map((f) => {
                 const isHome = f.team_h === player.team;
                 const opponent = isHome

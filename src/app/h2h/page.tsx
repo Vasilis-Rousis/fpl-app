@@ -17,11 +17,11 @@ export default async function H2HPage() {
     .eq("league_id", leagueId)
     .order("event", { ascending: true });
 
-  // Get current GW
-  const { data: currentGW } = await supabase
+  // Get next GW for upcoming opponent
+  const { data: nextGW } = await supabase
     .from("gameweeks")
     .select("id")
-    .eq("is_current", true)
+    .eq("is_next", true)
     .single();
 
   if (!matches || matches.length === 0) {
@@ -48,7 +48,15 @@ export default async function H2HPage() {
     }
   >();
 
-  for (const m of matches) {
+  // Split matches into played and upcoming
+  const playedMatches = matches.filter(
+    (m) => !nextGW || m.event < nextGW.id
+  );
+  const upcomingMatches = matches.filter(
+    (m) => nextGW && m.event >= nextGW.id
+  );
+
+  for (const m of playedMatches) {
     for (const side of [1, 2] as const) {
       const entry = side === 1 ? m.entry_1_entry : m.entry_2_entry;
       const name = side === 1 ? m.entry_1_name : m.entry_2_name;
@@ -74,10 +82,14 @@ export default async function H2HPage() {
       const s = standings.get(entry)!;
       s.pointsFor += pts ?? 0;
 
-      if (m.winner === entry) {
+      // Determine winner by comparing points (FPL API winner field is often null)
+      const myPts = pts ?? 0;
+      const oppPts = (side === 1 ? m.entry_2_points : m.entry_1_points) ?? 0;
+
+      if (myPts > oppPts) {
         s.wins++;
         s.points += 3;
-      } else if (m.winner === null) {
+      } else if (myPts === oppPts) {
         s.draws++;
         s.points += 1;
       } else {
@@ -90,11 +102,11 @@ export default async function H2HPage() {
     (a, b) => b.points - a.points || b.pointsFor - a.pointsFor
   );
 
-  // Find current GW opponent
-  const currentMatch = currentGW
+  // Find next GW opponent
+  const currentMatch = nextGW
     ? matches.find(
         (m) =>
-          m.event === currentGW.id &&
+          m.event === nextGW.id &&
           (m.entry_1_entry === managerId || m.entry_2_entry === managerId)
       )
     : null;
@@ -111,12 +123,25 @@ export default async function H2HPage() {
       : currentMatch.entry_1_player_name
     : null;
 
-  // My H2H record
-  const myMatches = matches.filter(
+  // My H2H record (only played matches)
+  const myMatches = playedMatches.filter(
     (m) => m.entry_1_entry === managerId || m.entry_2_entry === managerId
   );
-  const myWins = myMatches.filter((m) => m.winner === managerId).length;
-  const myDraws = myMatches.filter((m) => m.winner === null).length;
+  const myUpcoming = upcomingMatches.filter(
+    (m) => m.entry_1_entry === managerId || m.entry_2_entry === managerId
+  );
+  const myWins = myMatches.filter((m) => {
+    const isEntry1 = m.entry_1_entry === managerId;
+    const myPts = isEntry1 ? m.entry_1_points : m.entry_2_points;
+    const oppPts = isEntry1 ? m.entry_2_points : m.entry_1_points;
+    return (myPts ?? 0) > (oppPts ?? 0);
+  }).length;
+  const myDraws = myMatches.filter((m) => {
+    const isEntry1 = m.entry_1_entry === managerId;
+    const myPts = isEntry1 ? m.entry_1_points : m.entry_2_points;
+    const oppPts = isEntry1 ? m.entry_2_points : m.entry_1_points;
+    return (myPts ?? 0) === (oppPts ?? 0);
+  }).length;
   const myLosses = myMatches.length - myWins - myDraws;
 
   return (
@@ -148,7 +173,7 @@ export default async function H2HPage() {
       {/* Current Opponent */}
       {currentMatch && opponentEntry && (
         <div className="rounded-xl border border-fpl-green/30 bg-fpl-green/5 p-6">
-          <h2 className="text-lg font-bold">Current Gameweek Opponent</h2>
+          <h2 className="text-lg font-bold">Next Gameweek Opponent</h2>
           <p className="mt-1 text-fpl-muted">
             You&apos;re playing against{" "}
             <span className="font-medium text-white">{opponentName}</span>
@@ -221,10 +246,43 @@ export default async function H2HPage() {
         </div>
       </section>
 
+      {/* Upcoming Fixtures */}
+      {myUpcoming.length > 0 && (
+        <section>
+          <h2 className="mb-4 text-xl font-bold">Upcoming Fixtures</h2>
+          <div className="space-y-2">
+            {myUpcoming
+              .sort((a, b) => a.event - b.event)
+              .map((m) => {
+                const isEntry1 = m.entry_1_entry === managerId;
+                const oppName = isEntry1
+                  ? m.entry_2_player_name
+                  : m.entry_1_player_name;
+
+                return (
+                  <div
+                    key={m.id}
+                    className="flex items-center justify-between rounded-lg border border-fpl-border bg-fpl-card px-4 py-3"
+                  >
+                    <span className="text-sm text-fpl-muted">GW{m.event}</span>
+                    <span className="text-sm">vs {oppName}</span>
+                    <span className="rounded bg-white/10 px-2 py-0.5 text-xs text-fpl-muted">
+                      Upcoming
+                    </span>
+                  </div>
+                );
+              })}
+          </div>
+        </section>
+      )}
+
       {/* Match History */}
       <section>
-        <h2 className="mb-4 text-xl font-bold">Your Match History</h2>
+        <h2 className="mb-4 text-xl font-bold">Match History</h2>
         <div className="space-y-2">
+          {myMatches.length === 0 && (
+            <p className="text-sm text-fpl-muted">No matches played yet.</p>
+          )}
           {myMatches
             .sort((a, b) => b.event - a.event)
             .map((m) => {
@@ -234,8 +292,8 @@ export default async function H2HPage() {
               const oppName = isEntry1
                 ? m.entry_2_player_name
                 : m.entry_1_player_name;
-              const won = m.winner === managerId;
-              const drew = m.winner === null;
+              const won = (myPoints ?? 0) > (oppPoints ?? 0);
+              const drew = (myPoints ?? 0) === (oppPoints ?? 0);
 
               return (
                 <div

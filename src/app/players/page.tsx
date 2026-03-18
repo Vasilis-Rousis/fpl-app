@@ -7,11 +7,11 @@ export const dynamic = "force-dynamic";
 export default async function PlayersPage() {
   const supabase = createServerClient();
 
-  // Get current gameweek
-  const { data: currentGW } = await supabase
+  // Get next gameweek (scores are stored under next GW)
+  const { data: nextGW } = await supabase
     .from("gameweeks")
     .select("id")
-    .eq("is_current", true)
+    .eq("is_next", true)
     .single();
 
   // Fetch players
@@ -30,15 +30,33 @@ export default async function PlayersPage() {
 
   // Fetch scores if available
   let scoreMap: Record<number, number> = {};
-  if (currentGW) {
+  if (nextGW) {
     const { data: scores } = await supabase
       .from("player_scores")
       .select("element, composite_score")
-      .eq("gameweek", currentGW.id);
+      .eq("gameweek", nextGW.id);
 
     if (scores) {
       scoreMap = Object.fromEntries(scores.map((s) => [s.element, s.composite_score]));
     }
+  }
+
+  // Determine which teams have a blank next GW
+  let blankTeamIds = new Set<number>();
+  if (nextGW) {
+    const { data: nextFixtures } = await supabase
+      .from("fixtures")
+      .select("team_h, team_a")
+      .eq("event", nextGW.id);
+
+    const playingTeams = new Set<number>();
+    for (const f of nextFixtures ?? []) {
+      playingTeams.add(f.team_h);
+      playingTeams.add(f.team_a);
+    }
+    blankTeamIds = new Set(
+      (teams ?? []).map((t) => t.id).filter((id) => !playingTeams.has(id))
+    );
   }
 
   // Build team name map
@@ -51,6 +69,7 @@ export default async function PlayersPage() {
     ...p,
     team_short_name: teamMap[p.team] ?? "???",
     composite_score: scoreMap[p.id] ?? null,
+    has_blank: blankTeamIds.has(p.team),
   }));
 
   return (
