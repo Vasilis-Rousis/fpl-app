@@ -1,5 +1,5 @@
 import "server-only";
-import { createServerClient } from "@/lib/supabase/server";
+import { createServerClient, fetchAllRows } from "@/lib/supabase/server";
 
 /**
  * Calculate home/away performance scores.
@@ -11,14 +11,17 @@ export async function calculateAllHomeAwayScores(
 ): Promise<Map<number, number>> {
   const supabase = createServerClient();
 
-  // Get player history
-  const { data: allHistory } = await supabase
-    .from("player_history")
-    .select("element, was_home, total_points, minutes")
-    .lte("round", currentGameweek)
-    .gt("minutes", 0);
-
-  if (!allHistory) return new Map();
+  // Get player history (paginate to avoid Supabase 1000-row limit)
+  const allHistory = await fetchAllRows<{
+    element: number; was_home: boolean; total_points: number; minutes: number;
+  }>(({ from, to }) =>
+    supabase
+      .from("player_history")
+      .select("element, was_home, total_points, minutes")
+      .lte("round", currentGameweek)
+      .gt("minutes", 0)
+      .range(from, to)
+  );
 
   // Get next fixtures to determine home/away
   const { data: nextFixtures } = await supabase

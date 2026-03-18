@@ -15,3 +15,27 @@ export function createServerClient() {
 
   return createClient(supabaseUrl, supabaseServiceKey);
 }
+
+/**
+ * Fetch all rows from a Supabase query by paginating through 1000-row pages.
+ * Pass a function that builds the query (without .range()) — pagination is added automatically.
+ */
+export async function fetchAllRows<T>(
+  buildQuery: (range: { from: number; to: number }) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>
+): Promise<T[]> {
+  const PAGE_SIZE = 1000;
+  const allRows: T[] = [];
+  let from = 0;
+
+  while (true) {
+    const { data, error } = await buildQuery({ from, to: from + PAGE_SIZE - 1 });
+    if (error) throw new Error(`Paginated fetch failed: ${error.message}`);
+    if (!data || data.length === 0) break;
+
+    allRows.push(...data);
+    if (data.length < PAGE_SIZE) break;
+    from += PAGE_SIZE;
+  }
+
+  return allRows;
+}

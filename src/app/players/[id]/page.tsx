@@ -33,30 +33,30 @@ export default async function PlayerDetailPage({
     .eq("element", parseInt(id))
     .order("round", { ascending: true });
 
-  // Fetch current GW score
+  // Fetch GW context — scores are stored under nextGW
+  const { data: nextGW } = await supabase
+    .from("gameweeks")
+    .select("id")
+    .eq("is_next", true)
+    .single();
+
   const { data: currentGW } = await supabase
     .from("gameweeks")
     .select("id")
     .eq("is_current", true)
     .single();
 
+  const scoreGW = nextGW?.id ?? currentGW?.id;
   let score = null;
-  if (currentGW) {
+  if (scoreGW) {
     const { data: scoreData } = await supabase
       .from("player_scores")
       .select("*")
       .eq("element", parseInt(id))
-      .eq("gameweek", currentGW.id)
+      .eq("gameweek", scoreGW)
       .single();
     score = scoreData;
   }
-
-  // Fetch next GW
-  const { data: nextGW } = await supabase
-    .from("gameweeks")
-    .select("id")
-    .eq("is_next", true)
-    .single();
 
   // Fetch upcoming fixtures
   const { data: upcomingFixtures } = await supabase

@@ -1,5 +1,5 @@
 import "server-only";
-import { createServerClient } from "@/lib/supabase/server";
+import { createServerClient, fetchAllRows } from "@/lib/supabase/server";
 
 // Recency weights for last 5 gameweeks (most recent first)
 const RECENCY_WEIGHTS = [0.35, 0.25, 0.2, 0.12, 0.08];
@@ -91,14 +91,19 @@ export async function calculateAllFormScores(
   // Get all player histories for last 5 GWs in one query
   const startGW = Math.max(1, currentGameweek - 4);
 
-  const { data: allHistory } = await supabase
-    .from("player_history")
-    .select("element, round, total_points, expected_goals, goals_scored, expected_assists, assists, minutes")
-    .gte("round", startGW)
-    .lte("round", currentGameweek)
-    .order("round", { ascending: false });
-
-  if (!allHistory) return new Map();
+  const allHistory = await fetchAllRows<{
+    element: number; round: number; total_points: number;
+    expected_goals: string; goals_scored: number;
+    expected_assists: string; assists: number; minutes: number;
+  }>(({ from, to }) =>
+    supabase
+      .from("player_history")
+      .select("element, round, total_points, expected_goals, goals_scored, expected_assists, assists, minutes")
+      .gte("round", startGW)
+      .lte("round", currentGameweek)
+      .order("round", { ascending: false })
+      .range(from, to)
+  );
 
   // Group by player
   const playerHistories = new Map<number, typeof allHistory>();

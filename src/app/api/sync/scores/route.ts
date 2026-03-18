@@ -18,16 +18,25 @@ export async function GET(request: NextRequest) {
       .eq("is_current", true)
       .single();
 
-    if (!currentGW) {
-      return NextResponse.json({ message: "No current gameweek found" });
+    const { data: nextGW } = await supabase
+      .from("gameweeks")
+      .select("id")
+      .eq("is_next", true)
+      .single();
+
+    const computeGW = currentGW?.id ?? (nextGW ? nextGW.id - 1 : null);
+    if (!computeGW) {
+      return NextResponse.json({ message: "No gameweek found" });
     }
 
-    const scores = await computeAllScores(currentGW.id);
-    const stored = await storeScores(scores, currentGW.id);
+    const storeGW = nextGW?.id ?? computeGW;
+    const scores = await computeAllScores(computeGW);
+    const stored = await storeScores(scores, storeGW);
 
     return NextResponse.json({
       success: true,
-      gameweek: currentGW.id,
+      computedWith: computeGW,
+      storedUnder: storeGW,
       playersScored: stored,
     });
   } catch (error) {

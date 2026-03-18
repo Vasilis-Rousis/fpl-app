@@ -1,5 +1,5 @@
 import "server-only";
-import { createServerClient } from "@/lib/supabase/server";
+import { createServerClient, fetchAllRows } from "@/lib/supabase/server";
 
 /**
  * Calculate consistency scores for all players.
@@ -12,13 +12,17 @@ export async function calculateAllConsistencyScores(
 
   const startGW = Math.max(1, currentGameweek - 9); // Last 10 GWs
 
-  const { data: allHistory } = await supabase
-    .from("player_history")
-    .select("element, minutes, starts, total_points, round")
-    .gte("round", startGW)
-    .lte("round", currentGameweek);
-
-  if (!allHistory) return new Map();
+  const allHistory = await fetchAllRows<{
+    element: number; minutes: number; starts: number;
+    total_points: number; round: number;
+  }>(({ from, to }) =>
+    supabase
+      .from("player_history")
+      .select("element, minutes, starts, total_points, round")
+      .gte("round", startGW)
+      .lte("round", currentGameweek)
+      .range(from, to)
+  );
 
   // Group by player
   const playerHistories = new Map<number, typeof allHistory>();
